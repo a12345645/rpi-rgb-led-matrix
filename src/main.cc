@@ -8,7 +8,11 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include <opencv2/opencv.hpp>
+
 using namespace rgb_matrix;
+using namespace cv;
+using namespace std;
 
 volatile bool interrupt_received = false;
 static void InterruptHandler(int signo)
@@ -60,11 +64,13 @@ public:
 
         int tx, ty;
 
-        if (y < height_ / 2) {
+        if (y < height_ / 2)
+        {
             ty = y;
             tx = x + (matrix_->width() / 2);
         }
-        else {
+        else
+        {
             ty = y - height_ / 2;
             tx = x;
         }
@@ -87,6 +93,7 @@ public:
     {
         matrix_->Clear();
     }
+
 private:
     RGBMatrix *matrix_;
     const int width_;
@@ -99,6 +106,59 @@ class ImageLoader
 public:
     ImageLoader() {}
     ~ImageLoader() {}
+    void Load(char* path)
+    {
+        Mat image;
+        image = imread(path, 1);
+        printf("row : %d cols : %d \n", image.rows, image.cols);
+
+        int rx = image.rows / 2, ry = image.cols / 2;
+        int m = std::min(image.rows, image.cols);
+        rx -= m / 2; ry -= m / 2;
+        Rect rect(rx, ry, m, m);
+        Mat tempImg(image, rect);
+
+        Mat dstImg;
+        //Vec3b
+    }
+
+private:
+    struct Pixel
+    {
+        Pixel() : red(0), green(0), blue(0) {}
+        uint8_t red;
+        uint8_t green;
+        uint8_t blue;
+    };
+
+    struct Image
+    {
+        Image() : width(-1), height(-1), image(NULL) {}
+        ~Image() { Delete(); }
+        void Delete()
+        {
+            delete[] image;
+            Reset();
+        }
+        void Reset()
+        {
+            image = NULL;
+            width = -1;
+            height = -1;
+        }
+        inline bool IsValid() { return image && height > 0 && width > 0; }
+        const Pixel &getPixel(int x, int y)
+        {
+            static Pixel black;
+            if (x < 0 || x >= width || y < 0 || y >= height)
+                return black;
+            return image[x + width * y];
+        }
+
+        int width;
+        int height;
+        Pixel *image;
+    };
 };
 
 class ImageRunner
@@ -114,8 +174,6 @@ public:
     }
     void Run()
     {
-        
-        
         while (!interrupt_received)
         {
             usleep(10000);
@@ -143,6 +201,9 @@ int main(int argc, char *argv[])
     runtime_opt.gpio_slowdown = 4;
 
     int imgw = 64, imgh = 64;
+
+    ImageLoader imgLdr;
+    imgLdr.Load(argv[1]);
 
     RGBMatrix *matrix = RGBMatrix::CreateFromOptions(matrix_options, runtime_opt);
     if (matrix == NULL)
