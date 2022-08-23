@@ -10,7 +10,7 @@
 #include "pixel-mapper.h"
 #include "graphics.h"
 
-#include <assert.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,32 +31,31 @@ static void InterruptHandler(int signo)
     interrupt_received = true;
 }
 
-class DemoRunner {
+class DemoRunner
+{
 protected:
-  DemoRunner(Canvas *canvas) : canvas_(canvas) {}
-  inline Canvas *canvas() { return canvas_; }
+    DemoRunner(Canvas *canvas) : canvas_(canvas) {}
+    inline Canvas *canvas() { return canvas_; }
 
 public:
-  virtual ~DemoRunner() {}
-  virtual void Run() = 0;
+    virtual ~DemoRunner() {}
+    virtual void Run() = 0;
 
 private:
-  Canvas *const canvas_;
+    Canvas *const canvas_;
 };
 
 class CanvasMapping
 {
 public:
     int tx, ty;
-    CanvasMapping(int width, int height): height_(height), width_(width){
-        
-    }
-    virtual ~CanvasMapping() {}
+    CanvasMapping(int width, int height) : width_(width), height_(height) {}
+    ~CanvasMapping() {}
     int CoordTrans(int x, int y)
     {
-        if (0 > x || x >= width_ || 0 > y || y >= height_) {
+        if (0 > x || x >= width_ || 0 > y || y >= height_)
             return 0;
-        }
+
         int tmpx = x >> 4, tmpy = y >> 3;
         int offset = (tmpx & 0b1) + (tmpy & 0b1) - 1;
         tmpx -= offset;
@@ -72,39 +71,124 @@ private:
     const int height_;
 };
 
+class ImageDisplay : public Canvas
+{
+public:
+    ImageDisplay(RGBMatrix *m, int width, int height) : matrix_(m), width_(width), height_(height)
+    {
+        canvMap_ = new CanvasMapping(matrix_->width(), matrix_->height());
+    }
+    ~ImageDisplay()
+    {
+        delete canvMap_;
+    };
+    virtual void SetPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
+    {
+        if (x < 0 || x >= width_ || y < 0 || y >= height_)
+            return;
+
+        int tx, ty;
+
+        if (y < height_ / 2) {
+            ty = y;
+            tx = x + (matrix_->width() / 2);
+        }
+        else {
+            ty = y - height_ / 2;
+            tx = x;
+        }
+        if (canvMap_->CoordTrans(tx, ty))
+            matrix_->SetPixel(canvMap_->tx, canvMap_->ty, r, g, b);
+    }
+    virtual int width() const
+    {
+        return width_;
+    }
+    virtual int height() const
+    {
+        return height_;
+    }
+    virtual void Fill(uint8_t r, uint8_t g, uint8_t b)
+    {
+        matrix_->Fill(r, g, b);
+    }
+    virtual void Clear()
+    {
+        matrix_->Clear();
+    }
+private:
+    RGBMatrix *matrix_;
+    const int width_;
+    const int height_;
+    CanvasMapping *canvMap_;
+};
 
 class SimpleSquare : public DemoRunner
 {
 public:
-    SimpleSquare(Canvas *m) : DemoRunner(m) {}
+    SimpleSquare(RGBMatrix *m) : DemoRunner(m), matrix_(m) {}
     void Run() override
     {
-        const int width = canvas()->width() - 1;
-        const int height = canvas()->height() - 1;
+        ImageDisplay * imageDisplay = new ImageDisplay(matrix_, 64, 64);
+        int rotation = 0;
+        const int cent_x = 64 / 2;
+        const int cent_y = 64 / 2;
 
-        CanvasMapping *canvasMapping = new CanvasMapping(width + 1, height + 1);
-        int x = 0, y = 0;
-        uint8_t r = 255, g = 255, b = 255;
+        const int rotate_square = min(64, 64) * 1.41;
+        const int min_rotate = cent_x - rotate_square / 2;
+        const int max_rotate = cent_x + rotate_square / 2;
+
+        const int display_square = min(64, 64) * 0.7;
+        const int min_display = cent_x - display_square / 2;
+        const int max_display = cent_x + display_square / 2;
+
+        const float deg_to_rad = 2 * 3.14159265 / 360;
+
         while (!interrupt_received)
-        {   
-            for (int i = 0 ; i < 16; i++, x++) {
-                canvasMapping->CoordTrans(x, y);
-                canvas()->SetPixel(canvasMapping->tx, canvasMapping->ty, r, g, b);
-            }
-            if (x > width)
+        {
+            ++rotation;
+            usleep(10000);
+            rotation %= 360;
+            for (int x = min_rotate; x < max_rotate; ++x)
             {
-                y++;
-                x = 0;
-                if (y > height)
-                {            std::cout << "x " << x << " y " << y << std::endl;
-                    y = 0;
-                    r++;
-                    g++;
-                    b++;
+                for (int y = min_rotate; y < max_rotate; ++y)
+                {
+                    float rot_x, rot_y;
+                    Rotate(x - cent_x, y - cent_x,
+                           deg_to_rad * rotation, &rot_x, &rot_y);
+                    if (x >= min_display && x < max_display &&
+                        y >= min_display && y < max_display)
+                    { // within display square
+                        imageDisplay->SetPixel(rot_x + cent_x, rot_y + cent_y,
+                                           scale_col(x, min_display, max_display),
+                                           255 - scale_col(y, min_display, max_display),
+                                           scale_col(y, min_display, max_display));
+                    }
+                    else
+                    {
+                        // black frame.
+                        imageDisplay->SetPixel(rot_x + cent_x, rot_y + cent_y, 0, 0, 0);
+                    }
                 }
             }
-            usleep(100000);
         }
+    }
+
+private:
+    RGBMatrix *matrix_;
+    void Rotate(int x, int y, float angle,
+                float *new_x, float *new_y)
+    {
+        *new_x = x * cosf(angle) - y * sinf(angle);
+        *new_y = x * sinf(angle) + y * cosf(angle);
+    }
+    uint8_t scale_col(int val, int lo, int hi)
+    {
+        if (val < lo)
+            return 0;
+        if (val > hi)
+            return 255;
+        return 255 * (val - lo) / (hi - lo);
     }
 };
 
@@ -119,20 +203,18 @@ int main(int argc, char *argv[])
     matrix_options.chain_length = 2;
     matrix_options.parallel = 1;
     matrix_options.multiplexing = 2;
-    
+
     runtime_opt.gpio_slowdown = 4;
 
     RGBMatrix *matrix = RGBMatrix::CreateFromOptions(matrix_options, runtime_opt);
     if (matrix == NULL)
         return 1;
 
-    Canvas *canvas = matrix;
-
     // The DemoRunner objects are filling
     // the matrix continuously.
     DemoRunner *demo_runner = NULL;
 
-    demo_runner = new SimpleSquare(canvas);
+    demo_runner = new SimpleSquare(matrix);
 
     // Set up an interrupt handler to be able to stop animations while they go
     // on. Each demo tests for while (!interrupt_received) {},
@@ -146,7 +228,7 @@ int main(int argc, char *argv[])
     demo_runner->Run();
 
     delete demo_runner;
-    delete canvas;
+    delete matrix;
 
     printf("Received CTRL-C. Exiting.\n");
     return 0;
