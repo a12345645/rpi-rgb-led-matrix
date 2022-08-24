@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <vector>
 
 #include <opencv2/opencv.hpp>
 
@@ -64,16 +65,9 @@ public:
 
         int tx, ty;
 
-        if (y < height_ / 2)
-        {
-            ty = y;
-            tx = x + (matrix_->width() / 2);
-        }
-        else
-        {
-            ty = y - height_ / 2;
-            tx = x;
-        }
+        ty = y % (height_ / 2);
+        tx = x + (((y / (height_ / 2)) - 1) & (matrix_->width() / 2));
+
         if (canvMap_->CoordTrans(tx, ty))
             matrix_->SetPixel(canvMap_->tx, canvMap_->ty, r, g, b);
     }
@@ -106,23 +100,39 @@ class ImageLoader
 public:
     ImageLoader() {}
     ~ImageLoader() {}
-    void Load(char* path)
+    int width = 0, height = 0;
+    void Load(char *path)
     {
         Mat image;
         image = imread(path, 1);
-        printf("row : %d cols : %d \n", image.rows, image.cols);
 
         int rx = image.rows / 2, ry = image.cols / 2;
         int m = std::min(image.rows, image.cols);
-        rx -= m / 2; ry -= m / 2;
-        Rect rect(rx, ry, m, m);
+        rx -= m / 2;
+        ry -= m / 2;
+        Rect rect(ry, rx, m, m);
         Mat tempImg(image, rect);
 
-        Mat dstImg;
-        //Vec3b
+        Mat dstimg = tempImg;
+        resize(tempImg, dstimg, Size(width, height), 0, 0, INTER_LINEAR);
+
+        Pixel *pimg = new Pixel[dstimg.cols * dstimg.rows];
+        for (int i = 0; i < dstimg.rows; i++) {
+            for (int j = 0; j < dstimg.cols; j++) {
+                Vec3b bgrPixel = dstimg.at<Vec3b>(Point(j, i));
+                pimg[i * dstimg.cols + j].blue = bgrPixel[0];
+                pimg[i * dstimg.cols + j].green = bgrPixel[1];
+                pimg[i * dstimg.cols + j].red = bgrPixel[2];
+            }
+        }
+        Image *fimg = new Image;
+        fimg->image = pimg;
+        fimg->height = dstimg.rows;
+        fimg->width = dstimg.cols;
+
+        imgs.push_back(fimg);
     }
 
-private:
     struct Pixel
     {
         Pixel() : red(0), green(0), blue(0) {}
@@ -159,6 +169,8 @@ private:
         int height;
         Pixel *image;
     };
+
+    vector<Image *> imgs;
 };
 
 class ImageRunner
@@ -167,16 +179,30 @@ public:
     ImageRunner(RGBMatrix *m, int width, int height) : matrix_(m)
     {
         imageDisplay = new ImageDisplay(matrix_, width, height);
+        imgLdr.width = width;
+        imgLdr.height = height;
     }
     ~ImageRunner()
     {
         delete imageDisplay;
     }
+    void ImageLoad(char *path)
+    {
+        imgLdr.Load(path);
+    }
     void Run()
     {
-        while (!interrupt_received)
-        {
-            usleep(10000);
+        while (!interrupt_received) {
+            for (size_t t = 0; t < imgLdr.imgs.size(); t++) {
+                ImageLoader::Image *img = imgLdr.imgs[t];
+                for (int i = 0; i < img->height; i++) {
+                    for (int j = 0; j < img->width; j++) {
+                        ImageLoader::Pixel p = img->image[i * img->width + j];
+                        imageDisplay->SetPixel(j, i, p.red, p.green, p.blue);
+                    }
+                }
+                sleep(1);
+            }
         }
     }
 
@@ -202,9 +228,6 @@ int main(int argc, char *argv[])
 
     int imgw = 64, imgh = 64;
 
-    ImageLoader imgLdr;
-    imgLdr.Load(argv[1]);
-
     RGBMatrix *matrix = RGBMatrix::CreateFromOptions(matrix_options, runtime_opt);
     if (matrix == NULL)
         return 1;
@@ -212,6 +235,10 @@ int main(int argc, char *argv[])
     ImageRunner *image_runner = NULL;
 
     image_runner = new ImageRunner(matrix, imgw, imgh);
+
+    for (int i = 1; i < argc; i++) {
+        image_runner->ImageLoad(argv[i]);
+    }
 
     signal(SIGTERM, InterruptHandler);
     signal(SIGINT, InterruptHandler);
