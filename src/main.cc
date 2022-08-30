@@ -254,7 +254,8 @@ int main(int argc, char *argv[])
     matrix_options.chain_length = 2;
     matrix_options.parallel = 1;
     matrix_options.multiplexing = 2;
-
+    matrix_options.brightness = 50;
+    
     runtime_opt.gpio_slowdown = 4;
 
     int imgw = 64, imgh = 64;
