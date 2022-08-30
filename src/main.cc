@@ -101,11 +101,38 @@ public:
     ImageLoader() {}
     ~ImageLoader() {}
     int width = 0, height = 0;
+    int interval = 1000000;
     void Load(char *path)
     {
         Mat image;
         image = imread(path, 1);
 
+        SetImage(image);
+    }
+
+    void LoadGif(char *path)
+    {
+        VideoCapture capture;
+        Mat frame;
+        frame = capture.open(path); //讀取gif檔案
+
+        double fps = capture.get(CAP_PROP_FPS);
+        interval = 1000000 / fps;
+
+        if(!capture.isOpened())
+        {
+            printf("can not open ...\n");
+            return ;
+        }
+        while (capture.read(frame))
+        {
+            SetImage(frame);
+        }
+        capture.release();
+    }
+
+    void SetImage(Mat &image)
+    {
         int rx = image.rows / 2, ry = image.cols / 2;
         int m = std::min(image.rows, image.cols);
         rx -= m / 2;
@@ -190,6 +217,10 @@ public:
     {
         imgLdr.Load(path);
     }
+    void GifLoad(char *path)
+    {
+        imgLdr.LoadGif(path);
+    }
     void Run()
     {
         while (!interrupt_received) {
@@ -201,7 +232,7 @@ public:
                         imageDisplay->SetPixel(j, i, p.red, p.green, p.blue);
                     }
                 }
-                sleep(1);
+                usleep(imgLdr.interval);
             }
         }
     }
@@ -236,9 +267,21 @@ int main(int argc, char *argv[])
 
     image_runner = new ImageRunner(matrix, imgw, imgh);
 
-    for (int i = 1; i < argc; i++) {
-        image_runner->ImageLoad(argv[i]);
+    int opt;
+    opt = getopt(argc, argv, "i:g:");
+    switch (opt) {
+        case 'i':
+            for (int i = optind; i < argc; i++) {
+                image_runner->ImageLoad(argv[i]);
+            } 
+        break;
+        case 'g':
+            image_runner->GifLoad(optarg);
+        break;
+        default: /* '?' */
+        ;
     }
+    
 
     signal(SIGTERM, InterruptHandler);
     signal(SIGINT, InterruptHandler);

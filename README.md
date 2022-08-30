@@ -795,3 +795,7 @@ things, like this installation by Dirk in Scharbeutz, Germany:
 [Rust binding]: https://crates.io/crates/rpi-led-matrix
 [Nodejs/Typescript binding]: https://github.com/alexeden/rpi-led-matrix
 [headless]: https://www.raspberrypi.com/documentation/computers/configuration.html#setting-up-a-headless-raspberry-pi
+
+
+note:
+I have also seen reports that on some Pis, the one-wire protocol is enabled (w1-gpio). This will also not work (disable by removing dtoverlay=w1-gpio in /boot/config.txt; or using raspi-config, Interface Options -> 1-Wire)

@@ -1,7 +1,7 @@
 CFLAGS=-Wall -O3 -g -Wextra -Wno-unused-parameter 
 CXXFLAGS=$(CFLAGS)
-OBJECTS=main.o DisplayImage.o
-BINARIES=main DisplayImage
+OBJECTS=main.o
+BINARIES=main
 
 # Where our library resides. You mostly only need to change the
 # RGB_LIB_DISTRIBUTION, this is where the library is checked out.
