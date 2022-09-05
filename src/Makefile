@@ -62,4 +62,4 @@ clean:
 	rm -f $(OBJECTS) $(BINARIES)
 
 FORCE:
-.PHONY: FORCE
+.PHONY: FORCE build

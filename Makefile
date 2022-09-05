@@ -14,6 +14,7 @@ all : $(RGB_LIBRARY)
 $(RGB_LIBRARY): FORCE
 	$(MAKE) -C $(RGB_LIBDIR)
 	$(MAKE) -C examples-api-use
+	$(MAKE) -C src
 
 clean:
 	$(MAKE) -C lib clean

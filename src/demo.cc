@@ -2,15 +2,12 @@
 
 #include "pixel-mapper.h"
 #include "graphics.h"
-#include "config.hpp"
-#include "set_serial_attribute.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
 #include <vector>
-#include <functional>
 
 #include <opencv2/opencv.hpp>
 
@@ -122,10 +119,10 @@ public:
         double fps = capture.get(CAP_PROP_FPS);
         interval = 1000000 / fps;
 
-        if (!capture.isOpened())
+        if(!capture.isOpened())
         {
             printf("can not open ...\n");
-            return;
+            return ;
         }
         while (capture.read(frame))
         {
@@ -147,10 +144,8 @@ public:
         resize(tempImg, dstimg, Size(width, height), 0, 0, INTER_LINEAR);
 
         Pixel *pimg = new Pixel[dstimg.cols * dstimg.rows];
-        for (int i = 0; i < dstimg.rows; i++)
-        {
-            for (int j = 0; j < dstimg.cols; j++)
-            {
+        for (int i = 0; i < dstimg.rows; i++) {
+            for (int j = 0; j < dstimg.cols; j++) {
                 Vec3b bgrPixel = dstimg.at<Vec3b>(Point(j, i));
                 pimg[i * dstimg.cols + j].blue = bgrPixel[0];
                 pimg[i * dstimg.cols + j].green = bgrPixel[1];
@@ -211,152 +206,56 @@ public:
     ImageRunner(RGBMatrix *m, int width, int height) : matrix_(m)
     {
         imageDisplay = new ImageDisplay(matrix_, width, height);
-        this->width = width;
-        this->height = height;
+        imgLdr.width = width;
+        imgLdr.height = height;
     }
     ~ImageRunner()
     {
         delete imageDisplay;
-        for (size_t i = 0; i < imgLdr.size(); i++)
-            delete imgLdr[i];
     }
-    std::function<int(void)> checkImg = []()
-    { return -1; };
     void ImageLoad(char *path)
     {
-        ImageLoader *iml = new ImageLoader();
-        imgLdr.push_back(iml);
-        imgLdr[imgLdr.size() - 1]->width = width;
-        imgLdr[imgLdr.size() - 1]->height = height;
-        imgLdr[imgLdr.size() - 1]->Load(path);
+        imgLdr.Load(path);
     }
     void GifLoad(char *path)
     {
-        ImageLoader *iml = new ImageLoader();
-        imgLdr.push_back(iml);
-        imgLdr[imgLdr.size() - 1]->width = width;
-        imgLdr[imgLdr.size() - 1]->height = height;
-        imgLdr[imgLdr.size() - 1]->LoadGif(path);
+        imgLdr.LoadGif(path);
     }
     void Run()
     {
-        if (imgLdr.size() == 0)
-        {
-            cout << "no image." << endl;
-            exit(1);
-        }
         size_t t = 0;
-        int imgptr = 0;
-        while (!interrupt_received)
-        {
-            int p = checkImg();
-            if (p != -1 &&  imgptr != p && p < (int)imgLdr.size()) {
-                imgptr = p;
-                t = 0;
-            }
-            
-            ImageLoader::Image *img = imgLdr[imgptr]->imgs[t++];
-            for (int i = 0; i < img->height; i++)
-            {
-                for (int j = 0; j < img->width; j++)
-                {
+        while (!interrupt_received) {
+            ImageLoader::Image *img = imgLdr.imgs[t++];
+            for (int i = 0; i < img->height; i++) {
+                for (int j = 0; j < img->width; j++) {
                     ImageLoader::Pixel p = img->image[i * img->width + j];
                     imageDisplay->SetPixel(j, i, p.red, p.green, p.blue);
                 }
             }
-            if (t >= imgLdr[imgptr]->imgs.size())
+            if(t >= imgLdr.imgs.size())
                 t = 0;
-            usleep(imgLdr[imgptr]->interval);
+            usleep(imgLdr.interval);
         }
     }
 
     struct Options
     {
-        Options()
-        {
+        Options() {
             padding = false;
         }
         ~Options() {}
         bool padding;
     };
 
+    static void ParseOptions(int argc, char *argv[], Options *options)
+    {
+        
+    }
+
 private:
-    int width, height;
     RGBMatrix *const matrix_;
-    vector<ImageLoader *> imgLdr;
+    ImageLoader imgLdr;
     ImageDisplay *imageDisplay;
-};
-
-class LoraRecver
-{
-public:
-    LoraRecver()
-    {
-        Config LoRaConfig;
-
-        if (LoRaConfig.OpenConfig(CONFIG_FILE_PATH))
-        {
-            LoRaConfig.ReadConfig();
-            tmi = LoRaConfig.RTM_return();
-            tmi -= 1;
-            LoRaConfig.CloseConfig();
-
-            if (LoRaSerial.OpenPort(PORT_FD)) {
-                LoRaSerial.setup(9600, 0);
-            } else {
-                exit(1);
-            }
-        }
-        else
-        {
-            cout << "unsuccessful open config.txt" << endl;
-            LoRaConfig.CloseConfig();
-            exit(1);
-        }
-    }
-    ~LoraRecver()
-    {
-        LoRaSerial.ClosePort();
-    }
-    std::function<int(void)> recvLora = [=]() {
-        int ret = LoRaSerial.readBuffer(buff, sizeof(buff));
-        if (ret < 1)
-            return -1;
-
-        if (buff[0] == 0xab && buff[1] == 0x0a) {
-            if (buff[2] == 0x00) {
-                cout << "interrupt protocol" << endl;
-                return 2;
-            }
-            else {
-                uint8_t G_C = buff[3];
-                uint8_t R_C = buff[4];
-                cout << G_C << " " << R_C;
-                if (buff[2] == 0x00) {
-                    cout << "interrupt protocol" << endl;
-                    cout << "show interrupt GIF" << endl;
-                    return 2;
-                }
-                else if (buff[2] == 0x01 || buff[2] == 0x11) {
-                    if ((G_C & (1 << tmi)) > 0) {
-                        // show green GIF
-                        cout << "show green GIF" << endl; 
-                        return 0;                       
-                    }
-                    else if ((R_C & (1 << tmi)) > 0) {
-                        // show red GIF
-                        cout << "show red GIF" << endl;
-                        return 1;
-                    }
-                }
-            }
-        }
-        return -1;
-    };
-private:
-    serialPort LoRaSerial;
-    uint8_t buff[512];
-    int tmi = 0;
 };
 
 int main(int argc, char *argv[])
@@ -371,7 +270,7 @@ int main(int argc, char *argv[])
     matrix_options.parallel = 1;
     matrix_options.multiplexing = 2;
     matrix_options.brightness = 50;
-
+    
     runtime_opt.gpio_slowdown = 4;
 
     int imgw = 64, imgh = 64;
@@ -383,28 +282,22 @@ int main(int argc, char *argv[])
     ImageRunner *image_runner = NULL;
 
     image_runner = new ImageRunner(matrix, imgw, imgh);
-    
+
     int opt;
     opt = getopt(argc, argv, "i:g:");
-
-    switch (opt)
-    {
-    case 'i':
-        for (int i = optind - 1; i < argc; i++)
-        {
-            image_runner->ImageLoad(argv[i]);
-        }
+    switch (opt) {
+        case 'i':
+            for (int i = optind; i < argc; i++) {
+                image_runner->ImageLoad(argv[i]);
+            } 
         break;
-    case 'g':
-        for (int i = optind - 1; i < argc; i++)
-            image_runner->GifLoad(argv[i]);
+        case 'g':
+            image_runner->GifLoad(optarg);
         break;
-    default: /* '?' */
+        default: /* '?' */
         ;
     }
-
-    LoraRecver *lorarecv = new LoraRecver();
-    image_runner->checkImg = lorarecv->recvLora;
+    
 
     signal(SIGTERM, InterruptHandler);
     signal(SIGINT, InterruptHandler);
