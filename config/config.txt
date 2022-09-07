@@ -1,4 +1,8 @@
 # any line started with '#' '\n' ' ' will be ignored
 
 # TM ID
-TM 1
+TM=1
+
+green=green.gif
+red=red.gif
+warning=warning.gif

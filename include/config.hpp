@@ -4,23 +4,23 @@
 #include <sstream>
 #include <fstream>
 #include <string>
-#include "typedefine.hpp"
 
 #define CONFIG_FILE_PATH "config/config.txt"
 
 using namespace std;
 
 class Config {
-public:
-    Config();
-    bool OpenConfig(const char* path);
-    void CloseConfig();
-    void ReadConfig();
-    int RTM_return();
 private:
-    config_object_t config;
-    string skip,line;
-    ifstream fop;
+    typedef struct config_object {
+        int RTM;
+        string green;
+        string red;
+        string warning;
+    }config_object_t;
+public:
+    Config(const string path);
+    ~Config();
+    Config::config_object_t* config;
 };
 
 #endif

@@ -1,7 +1,7 @@
 CFLAGS=-Wall -O3 -g -Wextra -Wno-unused-parameter 
 CXXFLAGS=$(CFLAGS)
-OBJECTS=main.o
-BINARIES=main
+OBJECTS=main.o demo.o
+BINARIES=main demo
 
 # Where our library resides. You mostly only need to change the
 # RGB_LIB_DISTRIBUTION, this is where the library is checked out.
@@ -25,8 +25,8 @@ $(RGB_LIBRARY): FORCE
 
 main : main.o $(RGB_LIBRARY)
 	$(CXX) $< -o $@ $(LDFLAGS) $(OPENCV_LIBDIR)
-
-DisplayImage : DisplayImage.o $(RGB_LIBRARY)
+	
+demo : demo.o $(RGB_LIBRARY)
 	$(CXX) $< -o $@ $(LDFLAGS) $(OPENCV_LIBDIR)
 	
 minimal-example : minimal-example.o

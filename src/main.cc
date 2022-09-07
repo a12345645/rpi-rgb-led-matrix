@@ -113,11 +113,16 @@ public:
         SetImage(image);
     }
 
-    void LoadGif(char *path)
+    void LoadGif(const char *path)
     {
         VideoCapture capture;
         Mat frame;
         frame = capture.open(path); //讀取gif檔案
+        cout << "path " <<  path << endl;
+        if(!capture.isOpened()){
+            cout << "Can not open the gif." << endl;
+            return;
+        }
 
         double fps = capture.get(CAP_PROP_FPS);
         interval = 1000000 / fps;
@@ -230,7 +235,7 @@ public:
         imgLdr[imgLdr.size() - 1]->height = height;
         imgLdr[imgLdr.size() - 1]->Load(path);
     }
-    void GifLoad(char *path)
+    void GifLoad(const char *path)
     {
         ImageLoader *iml = new ImageLoader();
         imgLdr.push_back(iml);
@@ -269,17 +274,6 @@ public:
             usleep(imgLdr[imgptr]->interval);
         }
     }
-
-    struct Options
-    {
-        Options()
-        {
-            padding = false;
-        }
-        ~Options() {}
-        bool padding;
-    };
-
 private:
     int width, height;
     RGBMatrix *const matrix_;
@@ -290,27 +284,12 @@ private:
 class LoraRecver
 {
 public:
-    LoraRecver()
+    LoraRecver(int t)
     {
-        Config LoRaConfig;
-
-        if (LoRaConfig.OpenConfig(CONFIG_FILE_PATH))
-        {
-            LoRaConfig.ReadConfig();
-            tmi = LoRaConfig.RTM_return();
-            tmi -= 1;
-            LoRaConfig.CloseConfig();
-
-            if (LoRaSerial.OpenPort(PORT_FD)) {
-                LoRaSerial.setup(9600, 0);
-            } else {
-                exit(1);
-            }
-        }
-        else
-        {
-            cout << "unsuccessful open config.txt" << endl;
-            LoRaConfig.CloseConfig();
+        tmi = t - 1;
+        if (LoRaSerial.OpenPort(PORT_FD)) {
+             LoRaSerial.setup(9600, 0);
+        } else {
             exit(1);
         }
     }
@@ -319,36 +298,28 @@ public:
         LoRaSerial.ClosePort();
     }
     std::function<int(void)> recvLora = [=]() {
-        int ret = LoRaSerial.readBuffer(buff, sizeof(buff));
-        if (ret < 1)
+        if(LoRaSerial.readBuffer(buff,sizeof(buff)) == -1) {
             return -1;
-
+        }
         if (buff[0] == 0xab && buff[1] == 0x0a) {
             if (buff[2] == 0x00) {
                 cout << "interrupt protocol" << endl;
                 return 2;
-            }
-            else {
+            } else {
                 uint8_t G_C = buff[3];
                 uint8_t R_C = buff[4];
-                cout << G_C << " " << R_C;
-                if (buff[2] == 0x00) {
-                    cout << "interrupt protocol" << endl;
-                    cout << "show interrupt GIF" << endl;
-                    return 2;
-                }
-                else if (buff[2] == 0x01 || buff[2] == 0x11) {
+                printf("G_C:%02x ; R_C:%02x\r\n",G_C,R_C);
+                if (buff[2] == 0x01 || buff[2] == 0x11) {
                     if ((G_C & (1 << tmi)) > 0) {
-                        // show green GIF
-                        cout << "show green GIF" << endl; 
-                        return 0;                       
-                    }
-                    else if ((R_C & (1 << tmi)) > 0) {
-                        // show red GIF
+                        //show green GIF
+                        cout << "show green GIF" << endl;
+                        return 0;
+                    } else if ((R_C & (1 << tmi)) > 0) {
+                        //show red GIF
                         cout << "show red GIF" << endl;
                         return 1;
                     }
-                }
+                } 
             }
         }
         return -1;
@@ -384,27 +355,18 @@ int main(int argc, char *argv[])
 
     image_runner = new ImageRunner(matrix, imgw, imgh);
     
-    int opt;
-    opt = getopt(argc, argv, "i:g:");
-
-    switch (opt)
-    {
-    case 'i':
-        for (int i = optind - 1; i < argc; i++)
-        {
-            image_runner->ImageLoad(argv[i]);
-        }
-        break;
-    case 'g':
-        for (int i = optind - 1; i < argc; i++)
-            image_runner->GifLoad(argv[i]);
-        break;
-    default: /* '?' */
-        ;
+    Config config(CONFIG_FILE_PATH);
+    if (config.config == nullptr) {
+        cout << "unsuccessful open config.txt" << endl;
+        exit(1);
     }
 
-    LoraRecver *lorarecv = new LoraRecver();
-    image_runner->checkImg = lorarecv->recvLora;
+    image_runner->GifLoad(config.config->green.c_str());
+    image_runner->GifLoad(config.config->red.c_str());
+    image_runner->GifLoad(config.config->warning.c_str());
+    
+    LoraRecver lorarecv(config.config->RTM);
+    image_runner->checkImg = lorarecv.recvLora;
 
     signal(SIGTERM, InterruptHandler);
     signal(SIGINT, InterruptHandler);
