@@ -1,6 +1,7 @@
 #include "set_serial_attribute.hpp"
 #include <string.h>
 #include <sys/ioctl.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -59,10 +60,37 @@ int serialPort::setup(int speed, int parity) {
     return 0;
 }
 
-int serialPort::readBuffer(uint8_t* buffer,int size) {
-    return read(fd,buffer,size);
+int serialPort::readBuffer(uint8_t* buffer,int size) {    
+    // return read(fd, buffer, size);
+    int s;
+    do
+    {
+        s = read(fd, &tmp, sizeof(tmp));
+    } while (s == sizeof(tmp));
+    
+    if (s >= 0) {
+        for (int i = 0; i < s - 1; i++) {
+            if (tmp[i] == LORA_HEADER_1 && tmp[i + 1] == LORA_HEADER_2 && (s - 1) >= LORA_PACKET_lEN) {
+                if ((tmp[i + 2] == tmi ||  tmp[i + 2] == 0) && 
+                    tmp[i + LORA_PACKET_lEN - 1] == general_cks(&tmp[i], LORA_PACKET_lEN - 1)) {
+                    memcpy(buffer, &tmp[i], LORA_PACKET_lEN);
+                    return LORA_PACKET_lEN;
+                }
+            }
+        }
+    }
+    return -1;
 }
 
 void serialPort::ClosePort() {
     close(fd);
+}
+
+uint8_t serialPort::general_cks(uint8_t *data, int len)
+{
+    uint8_t sum = 0;
+
+    for (int i = 0; i < len; i++)
+        sum += data[i];
+    return (int8_t) 0 - sum;
 }

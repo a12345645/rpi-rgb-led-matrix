@@ -1,0 +1,13 @@
+[Unit]
+Description=led matrix
+
+[Service]
+User=root
+ExecStart=/bin/bash ./start.sh
+WorkingDirectory={path}
+Restart=always
+RestartSec=1s
+TimeoutSec=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <vector>
 #include <functional>
+#include<ctime>
 
 #include <opencv2/opencv.hpp>
 
@@ -251,7 +252,7 @@ public:
             exit(1);
         }
         size_t t = 0;
-        int imgptr = 0;
+        int imgptr = -2;
         while (!interrupt_received)
         {
             int p = checkImg();
@@ -259,7 +260,11 @@ public:
                 imgptr = p;
                 t = 0;
             }
-            
+            if (imgptr == -2) {
+                imageDisplay->Fill(0, 0, 0);
+                usleep(100);
+                continue;
+            }
             ImageLoader::Image *img = imgLdr[imgptr]->imgs[t++];
             for (int i = 0; i < img->height; i++)
             {
@@ -292,46 +297,62 @@ public:
         } else {
             exit(1);
         }
+        if(tmi > 6)
+            LoRaSerial.tmi = 0x11;
+        else
+            LoRaSerial.tmi = 0x01;
+        last = time(0);
     }
     ~LoraRecver()
     {
         LoRaSerial.ClosePort();
     }
     std::function<int(void)> recvLora = [=]() {
-        if(LoRaSerial.readBuffer(buff,sizeof(buff)) == -1) {
-            return -1;
-        }
-        if (buff[0] == 0xab && buff[1] == 0x0a) {
-            if (buff[2] == 0x00) {
-                cout << "interrupt protocol" << endl;
-                return 2;
-            } else {
-                uint8_t G_C = buff[3];
-                uint8_t R_C = buff[4];
-                printf("G_C:%02x ; R_C:%02x\r\n",G_C,R_C);
-                if (buff[2] == 0x01 || buff[2] == 0x11) {
-                    if ((G_C & (1 << tmi)) > 0) {
-                        //show green GIF
-                        cout << "show green GIF" << endl;
-                        return 0;
-                    } else if ((R_C & (1 << tmi)) > 0) {
-                        //show red GIF
-                        cout << "show red GIF" << endl;
-                        return 1;
-                    }
-                } 
+        int kk = LoRaSerial.readBuffer(buff,sizeof(buff)), ret = -1;
+        if(kk > 0) {
+            if (buff[0] == 0xab && buff[1] == 0x0a) {
+                if (buff[2] == 0x00) {
+                    // cout << "interrupt protocol" << endl;
+                    ret = 2;
+                } else {
+                    if (buff[2] == 0x01 || buff[2] == 0x11) {
+                        uint8_t G_C = buff[3];
+                        uint8_t R_C = ~G_C;
+                        // printf("G_C:%02x ; R_C:%02x\r\n",G_C,R_C);
+                        if ((G_C & (1 << tmi)) > 0) {
+                            //show green GIF
+                            // cout << "show green GIF" << endl;
+                            ret = 0;
+                        } else if ((R_C & (1 << tmi)) > 0) {
+                            //show red GIF
+                            // cout << "show red GIF" << endl;
+                            ret = 1;
+                        }
+                    } 
+                }
             }
         }
-        return -1;
+        if (ret >= 0) {
+            last = time(0);
+        }
+        else {
+            if ((time(0) - last) > 5)
+                return -2;
+        }
+        return ret;
     };
 private:
     serialPort LoRaSerial;
-    uint8_t buff[512];
+    uint8_t buff[64];
     int tmi = 0;
+
+    time_t last;
+
 };
 
 int main(int argc, char *argv[])
 {
+    printf("start vms.\n");
     RGBMatrix::Options matrix_options;
     rgb_matrix::RuntimeOptions runtime_opt;
 
